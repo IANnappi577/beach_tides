@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Project Ian Nappi</title>
+    <!-- define the button style -->
+    <style>
+        .button {
+            background-color:rgba(255,255,255,0.7);
+            position:absolute;
+            display:flex;
+            top:0;
+            left:0;
+            padding:10px;
+            width:auto;
+            border-radius:10px;
+            margin-top:10px;
+            margin-left:10px;
+            border-color:black;
+        }
+        .button:hover {
+            background-color:rgba(255,255,255,0.4);
+            cursor:pointer;
+        }
+    </style>
+    <meta charset="utf-8"/>
+</head>
+
+<!-- vertex shader -->
+<script id="vertex-shader" type="x-shader/x-vertex">
+
+// position variables
+attribute vec4 vPosition;
+attribute vec3 vNormal;
+uniform mat4 projection, modelView;
+
+// colour variables
+uniform vec4 vColor;
+varying vec4 fColor;
+uniform vec4 ambientProduct, diffuseProduct, specularProduct;
+uniform vec4 lightPosition;
+uniform float shininess;
+// keep a flag, to skip normal lighting for the background plane
+uniform float use_lighting;
+varying float fuse_lighting;
+
+// texture variables
+attribute vec2 vTexCoord;
+varying vec2 fTexCoord;
+
+// keep an alpha value for the water, for fColor.a
+uniform float materialAlpha;
+
+void main()
+{
+    // skip the lighting calculations if we are drawing the background
+    if(use_lighting == 0.0) {
+        fColor = vColor;
+        fColor.a = materialAlpha;
+
+    } else {
+        // calculate normals
+        vec3 pos = -(modelView * vPosition).xyz;
+        
+        // set the light position
+        vec3 light = lightPosition.xyz;
+        vec3 L = normalize( light - pos );
+        vec3 E = normalize( -pos );
+        vec3 H = normalize( L + E );
+        
+        vec4 NN = vec4(vNormal,0);
+
+        // Transform vertex normal into eye coordinates
+        vec3 N = normalize( (modelView*NN).xyz);
+
+        // Compute terms in the illumination equation
+        vec4 ambient = ambientProduct;
+
+        float Kd = max( dot(L, N), 0.0 );
+        vec4 diffuse = Kd*diffuseProduct;
+
+        float Ks = pow( max(dot(N, H), 0.0), shininess );
+        vec4 specular = Ks * specularProduct;
+        
+        if( dot(L, N) < 0.0 ) {
+            specular = vec4(0.0, 0.0, 0.0, 1.0);
+        }
+
+        fColor = ambient + diffuse + specular;
+        fColor.a = materialAlpha;
+    }
+
+    // calculate the position
+    gl_Position = projection * modelView * vPosition;
+    gl_PointSize = 30.0;
+
+    // pass the texture to the fragment shader
+    fTexCoord = vTexCoord;
+
+    // pass the use_lighting variable to the vertex shader
+    fuse_lighting = use_lighting;
+}
+
+</script>
+
+<!-- fragment shader -->
+<script id="fragment-shader" type="x-shader/x-fragment">
+
+precision mediump float;
+
+varying vec4 fColor;
+
+// flag for whether to use textures/lighting
+varying float fuse_lighting;
+
+// texture variables
+varying vec2 fTexCoord;
+uniform sampler2D texture;
+
+void
+main()
+{
+    // if we are not using lighting (fuse_lighting = 0.0), the plane draw is the background sky
+
+    if(fuse_lighting == 0.0) {
+
+        // To create the stars, generate a pseudorandom number that
+        // decides whether we draw a white pixel instead of a black/dark blue one.
+        // Use the Linear Congruential Generator (LCG) algorithm, whose source code, slightly altered,
+        // was found on Wikipedia: https://en.wikipedia.org/wiki/Linear_congruential_generator#Sample_code
+        
+        // Choose random parameters for modulus, a, and c, and use the fragment coordinate for the seed
+        float modulus = 22138.0;
+        float a = 273.0;
+        float c = 120.0;
+        vec2 seed = gl_FragCoord.xy;
+        float rand = (mod((a * seed[0]*seed[1] + c), modulus)) / modulus;
+
+        if(rand > 0.9994) {
+            // make the stars the same colour as the blue sky, so 
+            // they disappear during the day
+            gl_FragColor = vec4(0.693, 0.732, 0.807, 1.0);
+        } else {
+            gl_FragColor = fColor;
+        }
+
+    } else {
+        gl_FragColor = fColor * texture2D( texture, fTexCoord );
+    }
+}
+</script>
+
+<script type="text/javascript" src="./Common/webgl-utils.js"></script>
+<script type="text/javascript" src="./Common/initShaders.js"></script>
+<script type="text/javascript" src="./Common/MV.js"></script>
+<script type="text/javascript" src="./src/main.js"></script>
+<script type="text/javascript" src="./src/button_anim.js"></script>
+
+<body style="margin:0; height:100%; overflow:hidden">
+    <canvas id="gl-canvas">
+    Oops ... your browser doesn't support the HTML5 canvas element
+    </canvas>
+    <button class="button" id="button" onclick="flip_button()">Stop Animation ⏸</button>
+    <img id="texImage" src="./sand.jpg" hidden></img>
+    <img id="texWaterImage" src="./water.jpg" hidden></img>
+</body>
+</html>
